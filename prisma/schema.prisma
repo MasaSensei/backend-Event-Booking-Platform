@@ -1,0 +1,111 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1.1 Authentication & User Management
+model User {
+  id       String @id @default(uuid())
+  email    String @unique
+  password String
+  // 3.3 Timezone Handling (Optional: untuk menyimpan preferensi user)
+  timezone String @default("UTC")
+
+  // Relations
+  events   Event[]   @relation("UserEvents") // Event yang dibuat (Creator)
+  bookings Booking[]
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  notifications Notification[]
+}
+
+// 1.2 & 2.1 Event & Multi-Slot Management
+model Event {
+  id          String @id @default(uuid())
+  title       String
+  description String @db.Text
+  location    String
+
+  // 1.2 Protected Route: Only Creator can Edit/Delete
+  creatorId String
+  creator   User   @relation("UserEvents", fields: [creatorId], references: [id])
+
+  // 2.1 One Event can have Multiple Slots
+  slots Slot[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Index untuk 1.3 Basic Text Search
+  @@index([title, description])
+}
+
+// 2.1 Slot Management & 3.1 Concurrency
+model Slot {
+  id      String @id @default(uuid())
+  eventId String
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  startTime DateTime
+  endTime   DateTime
+  capacity  Int
+
+  // 3.1 Concurrent Booking Protection (Optimistic Locking)
+  // Digunakan untuk mencegah dua user mengambil 1 spot terakhir bersamaan
+  version Int @default(0)
+
+  bookings Booking[]
+
+  createdAt DateTime @default(now())
+}
+
+// 1.4, 2.2, 2.3 Booking & Waitlist Logic
+model Booking {
+  id String @id @default(uuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  slotId String
+  slot   Slot   @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  // 1.4 Multi-spot booking (1-5)
+  spots Int @default(1)
+
+  // 1.5 & 2.3 Status Management
+  status BookingStatus @default(CONFIRMED)
+
+  // 3.2 Undo Cancellation (Timestamp untuk limit waktu undo)
+  cancelledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // 1.4 Pencegahan double booking: User yang sama tidak bisa booking slot yang sama dua kali
+  @@unique([userId, slotId])
+  // Index untuk 2.3 Waitlist Promotion (Urutan FIFO)
+  @@index([slotId, createdAt])
+}
+
+// Enums untuk Type-Safety
+enum BookingStatus {
+  CONFIRMED // Booking aktif
+  WAITLIST // 2.3 User mengantri karena slot penuh
+  CANCELLED // 2.2 Booking dibatalkan (Full/Partial)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
