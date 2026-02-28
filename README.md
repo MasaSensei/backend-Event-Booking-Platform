@@ -1,98 +1,81 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Event Booking System API (Backend)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Sistem Backend yang menangani pemesanan tiket event secara real-time dengan fokus pada integritas data, penanganan konkurensi, dan fitur waitlist otomatis.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 🚀 Tech Choices
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- **NestJS**: Digunakan karena arsitektur modularnya yang memudahkan pengelolaan logika bisnis yang kompleks dan integrasi **WebSockets** yang robust.
+- **Prisma & PostgreSQL**: Dipilih untuk memastikan _strict type-safety_ dan konsistensi data. Prisma memudahkan pengelolaan relasi database yang kompleks antara User, Event, Slot, dan Booking.
+- **Socket.io**: Digunakan untuk mengimplementasikan **Global Availability Update**. Setiap ada perubahan kuota (Booking/Cancel), sistem akan menyiarkan sisa slot terbaru ke semua klien yang terhubung secara real-time.
+- **Alternative Considered (Go)**: Sempat mempertimbangkan Go untuk performa konkurensi yang lebih tinggi, namun akhirnya memilih NestJS untuk memaksimalkan kecepatan pengembangan dan sinkronisasi tipe data (TypeScript) antara BE dan FE.
 
-## Project setup
+---
 
-```bash
-$ npm install
-```
+## ⚖️ Trade-offs
 
-## Compile and run the project
+### 1. Pessimistic Locking vs High-Throughput
 
-```bash
-# development
-$ npm run start
+Untuk menangani **Race Conditions** (Requirement 4), saya menggunakan `SELECT FOR UPDATE` (Pessimistic Locking) di level database saat proses transaksi booking.
 
-# watch mode
-$ npm run start:dev
+- **Kenapa?** Ini menjamin **zero overbooking**. Tidak akan pernah ada tiket yang terjual melebihi kapasitas meskipun diserbu ribuan user di detik yang sama.
+- **Risiko di Production:** Pada beban traffic yang sangat ekstrim, database locking dapat menyebabkan antrean transaksi (_lock contention_), yang berpotensi memperlambat respon API.
 
-# production mode
-$ npm run start:prod
-```
+### 2. Immediate Waitlist Promotion
 
-## Run tests
+Logika **Auto-Promotion** (Requirement 2.3) dijalankan langsung di dalam transaksi pembatalan (Cancellation).
 
-```bash
-# unit tests
-$ npm run test
+- **Kenapa?** Memberikan kepastian status instan bagi user yang berada di antrean pertama.
+- **Deprioritized:** Penggunaan _Message Broker_ (seperti RabbitMQ) dideprioritaskan untuk mengurangi kompleksitas infrastruktur pada tahap MVP, namun tetap menjaga konsistensi data.
 
-# e2e tests
-$ npm run test:e2e
+---
 
-# test coverage
-$ npm run test:cov
-```
+## 🛠️ Setup Instructions
 
-## Deployment
+### Prerequisites
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+- Node.js v18 atau lebih baru
+- PostgreSQL
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Local Installation
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+1.  **Clone Repository** dan masuk ke direktori backend.
+2.  **Install Dependencies**:
+    ```bash
+    npm install
+    ```
+3.  **Environment Variables**: Buat file `.env` di root:
+    ```env
+    DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/event_db?schema=public"
+    JWT_SECRET="rahasia_super_aman"
+    ```
+4.  **Database Sync & Seed**:
+    ```bash
+    npx prisma migrate dev --name init
+    npx prisma db seed
+    ```
+    _Seed ini akan membuat akun admin dan beberapa event dengan kuota terbatas untuk memudahkan testing waitlist._
+5.  **Run Server**:
+    ```bash
+    npm run start:dev
+    ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Test Accounts (Credentials)
 
-## Resources
+| Role                   | Email          | Password    |
+| :--------------------- | :------------- | :---------- |
+| **Admin/Organizer**    | admin@test.com | password123 |
+| **User A (Confirmed)** | userA@test.com | password123 |
+| **User B (Waitlist)**  | userB@test.com | password123 |
 
-Check out a few resources that may come in handy when working with NestJS:
+---
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## 📈 What You'd Improve
 
-## Support
+Jika memiliki waktu pengembangan lebih banyak, saya akan memprioritaskan hal berikut:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+1.  **Redis-based Distributed Locking**: Memindahkan mekanisme locking ke Redis menggunakan **Redlock**. Ini akan jauh lebih skalabel dibandingkan database locking karena tidak membebani transaksi PostgreSQL utama.
+2.  **Idempotency Keys**: Menambahkan key unik pada setiap request booking untuk mencegah duplikasi data jika terjadi _network retry_ dari sisi klien.
+3.  **Asynchronous Job Queue (BullMQ)**: Memindahkan proses notifikasi email dan promosi waitlist ke _background worker_ agar proses utama (Cancel/Booking) terasa lebih cepat bagi user.
+4.  **Load Testing**: Melakukan stress test menggunakan _K6_ khusus pada skenario "Flash Sale" untuk memastikan integritas data tetap terjaga di bawah tekanan ribuan koneksi konkuren.
