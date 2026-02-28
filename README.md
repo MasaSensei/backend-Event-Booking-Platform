@@ -47,8 +47,9 @@ Logika **Auto-Promotion** (Requirement 2.3) dijalankan langsung di dalam transak
     ```
 3.  **Environment Variables**: Buat file `.env` di root:
     ```env
+    PORT=8080
     DATABASE_URL="postgresql://USER:PASSWORD@localhost:5432/event_db?schema=public"
-    JWT_SECRET="rahasia_super_aman"
+    JWT_SECRET="super-secret-key"
     ```
 4.  **Database Sync & Seed**:
     ```bash
